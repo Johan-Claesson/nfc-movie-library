@@ -2,10 +2,11 @@
 
 An NFC-based movie library that lets kids start their favorite movies or TV shows by simply tapping a card.
 
-This project was inspired by u/Xafke’s NFC movie library. I built my own version using **ESP32**, **Home Assistant**, and **Plex** so my 2-year-old can start movies independently.
+This project was inspired by [u/Xafke's](https://www.reddit.com/user/Xafke/) NFC movie library. I built my own version using **ESP32**, **Home Assistant**, and **Plex** so my 2-year-old can start movies independently.
 
 The idea is simple:  
 tap an NFC card → Home Assistant receives the tag → a script calls the Plex API → playback starts on the Apple TV.
+Original Reddit post: https://www.reddit.com/r/homeassistant/comments/17xdxti/how_i_built_an_nfc_movie_library_for_my_kids_ha/ 
 
 ![NFC-Scanner and cards](https://github.com/Johan-Claesson/nfc-movie-library/blob/main/images/IMG_1334.JPEG)
 
@@ -157,7 +158,7 @@ The goal of this project was to:
 Huge credit to:
 
 [u/Xafke](https://www.reddit.com/user/Xafke/)  for the original idea and inspiration. 
-Here is the post that I used: https://simplyexplained.com/blog/how-i-built-an-nfc-movie-library-for-my-kids/ 
+Here is the post that he wrote: https://simplyexplained.com/blog/how-i-built-an-nfc-movie-library-for-my-kids/ 
 
 ---
 
