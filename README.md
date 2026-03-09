@@ -7,6 +7,8 @@ This project was inspired by u/Xafke’s NFC movie library. I built my own versi
 The idea is simple:  
 tap an NFC card → Home Assistant receives the tag → a script calls the Plex API → playback starts on the Apple TV.
 
+![NFC-Scanner and cards](https://github.com/Johan-Claesson/nfc-movie-library/blob/main/images/IMG_1334.JPEG)
+
 ---
 
 # How it works
