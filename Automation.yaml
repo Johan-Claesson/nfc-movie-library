@@ -1,37 +1,58 @@
 alias: NFC Movie Library
 description: ""
 triggers:
-  - entity_id:
-      - sensor.nfc_movie_sist_skannad_nfc_tag
-    enabled: true
-    trigger: state
   - tag_id: 04-8C-2E-BA-6F-61-80
     trigger: tag
   - tag_id: 04-47-DA-B5-6F-61-80
     trigger: tag
-  - tag_id: 04-E3-8B-B8-6F-61-80
-    trigger: tag
-# etc....
+# etc ... 
+    tag_id: 04-F1-A1-7F-C3-2A-81
   - trigger: tag
-    tag_id: 04-F5-79-CB-5F-61-80
-conditions:
-  - condition: or
-    conditions:
-      - condition: template
-        value_template: "{{ sensor.nfc_movie_sist_skannad_nfc_tag in nfc_mapping }}"
-      - condition: template
-        value_template: "{{ trigger.event.data.tag_id in nfc_mapping }}"
+    tag_id: 04-E5-A1-7F-C3-2A-81
+conditions: []
 actions:
+  # Optional debug logging (disabled by default)
+  - action: system_log.write
+    data:
+      level: warning
+      message: >-
+        DEBUG FULL: trigger={{ trigger }},  tag_id={{ trigger.tag_id }}, 
+        current={{ current_tag_id }}, in_mapping={{ current_tag_id in
+        nfc_mapping }}
+    enabled: false
+
+  # Bedtime / "TV cards are sleeping" guard
   - if:
-      - alias: Wait # Throws an audioble and visual error if any tag is scanned within 15s 
+      - condition: state
+        entity_id: input_boolean.YOUR_KIDS_TV_TOGGLE
+        state: "off"
+    then:
+      - action: media_player.play_media
+        target:
+          entity_id: media_player.YOUR_SPEAKER
+        data:
+          media:
+            media_content_id: media-source://media_source/local/Alert 3.mp3
+            media_content_type: audio/mpeg
+          announce: true
+      - action: notify.YOUR_TV_NOTIFY
+        continue_on_error: true
+        data:
+          message: 💤 The TV cards are sleeping right now. Ask a grown-up to wake them! 💤
+      - stop: Kids TV toggle is off
+
+  # Rate limit: ignore re-scans within 20 seconds
+  - if:
+      - alias: Only every 20 seconds
+        condition: template
         value_template: |-
           {% set lt = this.attributes.last_triggered %}
-                        {{ lt is not none and (now() - lt).total_seconds() <= 15 }}
+                        {{ lt is not none and (now() - lt).total_seconds() <= 20 }}
     then:
       - action: media_player.play_media
         metadata: {}
         target:
-          entity_id: media_player.beam
+          entity_id: media_player.YOUR_SPEAKER
         data:
           media:
             media_content_id: media-source://media_source/local/Alert 3.mp3
@@ -45,40 +66,45 @@ actions:
                 - {}
                 - media_content_type: app
                   media_content_id: media-source://media_source
-              browse_entity_id: media_player.beam
+              browse_entity_id: media_player.YOUR_SPEAKER
           announce: true
-      - action: notify.lg_webos_tv_65qned85t6c_beufljp
+      - action: notify.YOUR_TV_NOTIFY
         metadata: {}
         data:
-          message: ⏳ Vänta lite innan du skannar igen
-      - stop: Lugna ned dig :(
+          message: ⏳ Wait a moment before scanning again
+        continue_on_error: true
+      - stop: Slow down :(
+
+  # Stop current playback first (prevents Apple TV Plex freeze)
   - action: media_player.media_stop
     metadata: {}
     target:
-      entity_id: media_player.vardagsrum
+      entity_id: media_player.YOUR_TV
     data: {}
+
+  # Save light state, play scan confirmation sound, flash light, restore
   - action: saver.save_state
     metadata: {}
     data:
       entity_id:
-        - light.tvbank
+        - light.YOUR_TV_LIGHT
   - data:
       volume_level: 0.6
     target:
       entity_id:
-        - media_player.beam
+        - media_player.YOUR_SPEAKER
     action: media_player.volume_set
   - action: media_player.play_media
     metadata: {}
     target:
-      entity_id: media_player.beam
+      entity_id: media_player.YOUR_SPEAKER
     data:
       media:
         media_content_id: >-
-          media-source://media_source/local/miraclei-sample_confirm_success04_kofi_by_miraclei-360152.mp3
+          media-source://media_source/local/confirm_success.mp3
         media_content_type: audio/mpeg
         metadata:
-          title: miraclei-sample_confirm_success04_kofi_by_miraclei-360152.mp3
+          title: confirm_success.mp3
           thumbnail: null
           media_class: music
           children_media_class: null
@@ -86,37 +112,72 @@ actions:
             - {}
             - media_content_type: app
               media_content_id: media-source://media_source
-          browse_entity_id: media_player.beam
+          browse_entity_id: media_player.YOUR_SPEAKER
       announce: true
   - action: light.turn_on
     metadata: {}
     target:
-      entity_id: light.tvbank
+      entity_id: light.YOUR_TV_LIGHT
     data:
       flash: short
   - action: saver.restore_state
     metadata: {}
     data:
       entity_id:
-        - light.tvbank
+        - light.YOUR_TV_LIGHT
   - data:
       volume_level: 0.17
     target:
       entity_id:
-        - media_player.beam
+        - media_player.YOUR_SPEAKER
     action: media_player.volume_set
-  - alias: Starta TV om den är avstängd
+
+  # Turn on the TV if it is off, switch to Plex source
+  - alias: Turn on TV if it is off
     if:
-      - condition: device
-        device_id: 797c8f023f5e5984578c0d6d1f51a255
-        domain: media_player
-        entity_id: 3bdbde0cd4360e5fe17797e2f0d08798
-        type: is_off
+      - condition: or
+        conditions:
+          - condition: not
+            conditions:
+              - condition: or
+                conditions:
+                  - condition: device
+                    type: is_on
+                    device_id: YOUR_ATV_DEVICE_ID
+                    entity_id: YOUR_ATV_REMOTE_ENTITY_ID
+                    domain: remote
+                  - condition: device
+                    device_id: YOUR_ATV_DEVICE_ID
+                    domain: media_player
+                    entity_id: YOUR_ATV_MEDIA_ENTITY_ID
+                    type: is_on
+                  - condition: device
+                    device_id: YOUR_ATV_DEVICE_ID
+                    domain: media_player
+                    entity_id: YOUR_ATV_MEDIA_ENTITY_ID
+                    type: is_playing
+          - condition: device
+            device_id: YOUR_ATV_DEVICE_ID
+            domain: media_player
+            entity_id: YOUR_ATV_MEDIA_ENTITY_ID
+            type: is_off
+          - condition: device
+            type: is_off
+            device_id: YOUR_ATV_DEVICE_ID
+            entity_id: YOUR_ATV_REMOTE_ENTITY_ID
+            domain: remote
+          - condition: device
+            device_id: YOUR_ATV_DEVICE_ID
+            domain: media_player
+            entity_id: YOUR_ATV_MEDIA_ENTITY_ID
+            type: is_idle
+            enabled: false
     then:
       - action: media_player.turn_on
-        data: {}
+        metadata: {}
         target:
-          device_id: 797c8f023f5e5984578c0d6d1f51a255
+          entity_id: media_player.YOUR_TV
+        data: {}
       - delay:
           hours: 0
           minutes: 0
@@ -125,7 +186,7 @@ actions:
       - action: media_player.select_source
         metadata: {}
         target:
-          device_id: 797c8f023f5e5984578c0d6d1f51a255
+          device_id: YOUR_ATV_DEVICE_ID
         data:
           source: Plex
       - delay:
@@ -133,131 +194,124 @@ actions:
           minutes: 0
           seconds: 1
           milliseconds: 0
-      - wait_template: "{{ not is_state('media_player.plex_atv_vardagsrum','unavailable') }}"
+      - wait_template: "{{ not is_state('media_player.YOUR_PLEX_CLIENT','unavailable') }}"
         continue_on_timeout: true
         timeout: "20"
         enabled: false
-  - action: notify.lg_webos_tv_65qned85t6c_beufljp
+
+  # Switch AV receiver / soundbar to the correct input
+  - action: media_player.select_source
+    metadata: {}
+    target:
+      device_id: YOUR_RECEIVER_DEVICE_ID
+    data:
+      source: Apple OTT
+    continue_on_error: true
+
+  # On-screen notification
+  - action: notify.YOUR_TV_NOTIFY
     metadata: {}
     data:
-      message: 🍿 Spelar upp {{ nfc_mapping[trigger.event.data.tag_id].name }}
+      message: 🍿 Now playing {{ nfc_mapping[current_tag_id].name }}
+    continue_on_error: true
+
+  # Choose how to play based on the mapping type
   - choose:
+      # 1) Single movie / episode -> mark watched (reset resume) + play from start
       - conditions:
           - condition: template
             value_template: |
-              {{ trigger.event.data.tag_id in nfc_mapping
-                 and 'plex_id' in nfc_mapping[trigger.event.data.tag_id] }}
+              {{ current_tag_id in nfc_mapping
+                 and 'plex_id' in nfc_mapping[current_tag_id] }}
         sequence:
           - action: rest_command.plex_mark_watched
             metadata: {}
             data:
-              rating_key: "{{ nfc_mapping[trigger.event.data.tag_id].plex_id }}"
-              token:
-                "[object Object]": null
-          - alias: Spela upp via Plex
+              rating_key: "{{ nfc_mapping[current_tag_id].plex_id }}"
+              token: "{{ plex_token }}"
+          - alias: Play via Plex
             data:
               media:
                 media_content_id: >-
-                  plex://play/?metadataKey=%2Flibrary%2Fmetadata%2F{{nfc_mapping[trigger.event.data.tag_id].plex_id}}&metadataType=1&server=xxxxxxxxxxxx&resume=0
+                  plex://play/?metadataKey=%2Flibrary%2Fmetadata%2F{{nfc_mapping[current_tag_id].plex_id}}&metadataType=1&server={{ plex_server_id }}&resume=0
                 media_content_type: url
                 metadata: {}
             target:
-              device_id: 797c8f023f5e5984578c0d6d1f51a255
+              device_id: YOUR_ATV_DEVICE_ID
             action: media_player.play_media
         alias: Plex ID
+
+      # 2) Smart Playlist -> random episode, shuffled auto-advance, from start
       - conditions:
           - condition: template
             value_template: |
-              {{ trigger.event.data.tag_id in nfc_mapping
-                 and 'playlist_id' in nfc_mapping[trigger.event.data.tag_id] }}
+              {{ current_tag_id in nfc_mapping
+                 and 'playlist_id' in nfc_mapping[current_tag_id] }}
         sequence:
-          - alias: Hämta första objektet i collection
-            variables:
-              plex_token: xxxxxxxxxxxx
-              server_id: xxxxxxxxxxxxxx
-              playlist_id: "{{ nfc_mapping[trigger.event.data.tag_id].playlist_id }}"
-              xml_url: >-
-                http://192.168.10.92:32400/library/collections/{{ playlist_id
-                }}/children?X-Plex-Token={{ plex_token }}
-          - alias: Läs XML från Plex
-            action: rest_command.make_call
+          - alias: Play Smart Playlist (shuffled, from the beginning)
+            action: media_player.play_media
+            target:
+              device_id: YOUR_ATV_DEVICE_ID
             data:
-              url: "{{ xml_url }}"
-            response_variable: plexxml
-          - alias: Extrahera ratingKey för första objektet
-            variables:
-              xml: "{{ plexxml.content | string }}"
-              rating_key: >-
-                {{ xml | regex_findall_index('ratingKey="(\d+)"', 0) |
-                default('', true) }}
-          - alias: Bygg uppspelnings-URL
-            variables:
-              url: >-
-                plex://play/?metadataKey=%2Flibrary%2Fmetadata%2F{{ rating_key
-                }}&metadataType=1&server={{ server_id }}&resume=0
-          - action: rest_command.plex_mark_watched
-            data:
-              rating_key:
-                "[object Object]": null
-              token:
-                "[object Object]": null
-          - alias: Spela upp via Plex
-            if:
-              - condition: template
-                value_template: "{{ rating_key | default(none) is not none }}"
-            then:
-              - action: media_player.play_media
-                target:
-                  device_id: 797c8f023f5e5984578c0d6d1f51a255
-                data:
-                  media:
-                    media_content_id: "{{ url }}"
-                    media_content_type: url
-                    metadata: {}
-                enabled: true
-            else:
-              - alias: Logga fel om ingen rating_key hittades
-                action: system_log.write
-                data:
-                  level: warning
-                  message: >-
-                    Plex: Hittade ingen ratingKey i XML-svaret för
-                    playlist_id={{ playlist_id }}
-        alias: Playlist ID
+              media:
+                media_content_id: >-
+                  plex://play/?metadataKey=%2Fplaylists%2F{{ nfc_mapping[current_tag_id].playlist_id }}&server={{ plex_server_id }}&resume=0
+                media_content_type: url
+                metadata: {}
+        alias: Smart Playlist
+
+    # 3) Fallback -> external app deeplink (TV4 Play, Disney+, etc.)
     default:
       - data:
           media:
-            media_content_id: "{{ nfc_mapping[trigger.event.data.tag_id].deeplinkurl }}"
+            media_content_id: "{{ nfc_mapping[current_tag_id].deeplinkurl }}"
             media_content_type: url
             metadata: {}
         target:
-          device_id: 797c8f023f5e5984578c0d6d1f51a255
+          device_id: YOUR_ATV_DEVICE_ID
         action: media_player.play_media
-        alias: Spela upp via Deeplink
+        alias: Play via Deeplink
+
+  # Log the play event
   - data:
       name: NFC Movie
-      message: "{{ item.name }} startades via NFC"
-      entity_id: media_player.vardagsrum
+      message: "{{ nfc_mapping[current_tag_id].name }} started via NFC"
+      entity_id: media_player.YOUR_TV
     action: logbook.log
+
 variables:
+  current_tag_id: "{{ trigger.event.data.tag_id }}"
+  # Your Plex token and server machine identifier
+  plex_token: YOUR_PLEX_TOKEN
+  plex_server_id: YOUR_PLEX_SERVER_ID
   nfc_mapping:
+    # ---- Single movies / episodes (plex_id) ----
     04-47-DA-B5-6F-61-80:
       name: Pinnemanns Äventyr
-      plex_id: 35671
+      plex_id: 00000
+    04-83-45-BA-6F-61-80:
+      name: Ratatouille
+      plex_id: 00000
+    04-DD-A2-B8-6F-61-80:
+      name: Pippi Långstrump på dom sju haven
+      plex_id: 00000
+    04-90-BE-B9-6F-61-80:
+      name: Despicable Me
+      plex_id: 00000
+
+    # ---- Smart Playlists (playlist_id) -> shuffled episodes ----
     04-E3-8B-B8-6F-61-80:
       name: Bluey
-      playlist_id: 35764
-    04-83-45-BA-6F-61-80:
-      name: Råttatouile
-      deeplinkurl: https://www.disneyplus.com/play/ab7c4e29-04f1-46dd-931a-d43be1ce0f8c
+      playlist_id: 00000
     04-B4-52-B9-6F-61-80:
       name: Pettson & Findus
-      playlist_id: 35771
-  # etc.... 
+      playlist_id: 00000
+    04-8C-2E-BA-6F-61-80:
+      name: Lilla spöket Laban
+      playlist_id: 00000
+
+    # ---- External app deeplinks (deeplinkurl) ----
     B6-FD-1A-06:
-      name: TV4 Nyhetsmorgon
-      deeplinkurl: tv4play://details/67ff22880e988cd4d149?autoplay=true
-    04-5C-C8-CB-5F-61-81:
-      name: Bolibompadraken & Känslorna
-      plex_id: 35685
+      name: Morning News
+      deeplinkurl: tv4play://details/xxxxxxxx?autoplay=true
 mode: single
